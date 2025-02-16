@@ -1,0 +1,28 @@
+project:
+  type: website
+  output-dir: docs
+  resources:
+    - presentation.pdf
+
+author: "Add team name here in _quarto.yml"
+
+website:
+  navbar:
+    left:
+      - text: Home
+        href: index.qmd
+      - text: Presentation
+        href: presentation.pdf  
+      - text: Proposal
+        href: proposal.qmd
+      - text: About
+        href: about.qmd
+      - text: Contract
+        href: contract.qmd
+    right:
+      - icon: github
+        href: https://github.com/sta199-f24/project-a-team
+
+format:
+  html:
+    theme: default

@@ -1,0 +1,14 @@
+---
+title: Meet the team
+---
+
+This project was developed by A team For [STA 199: Introduction to Data Science](https://sta199-f24.github.io/) at Duke University.
+The team is comprised of the following team members.
+
+-   Team member 1: Daniel Gallagher is a Freshman majoring in CS
+
+-   Team member 2: Parishi Patel is a Sophomore majoring in Political Science
+
+-   Team member 3: Garret Smith is a Junior majoring in Biology
+
+-   Team member 4: Ava Byrd is Junior majoring in Biology

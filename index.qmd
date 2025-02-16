@@ -1,0 +1,701 @@
+---
+title: Analyzing how Different Factors Affect a Billionaire's Net Worth
+subtitle: Report
+toc: true
+author: A-Team
+execute:
+  echo: true
+---
+
+## Abstract
+
+This project examines how industry, gender, inheritance, and region influenced the net worth of billionaires across 1996, 2001, and 2014.
+Through the use of exploratory data analysis and regression models, we identify trends in wealth distribution and highlight the influence of differing variables on a billionaires net worth.
+
+## Introduction:
+
+Throughout the 20th and 21st centuries, the rise of new industries and the growth of existing ones, such as the technological sector has allowed billionaires to reach new heights in their net worth.
+We sought to evaluate the role played by factors such as year, region, gender, inheritance, and industry in determining an individual’s net worth as a billionaire.
+With the introduction of new technologies, industries and an ever-evolving demographic of billionaires, our group aimed to investigate the varying role played by the aforementioned factors.
+
+For this analysis, we are using data from the[“CORGIS Dataset Project”.](https://corgis-edu.github.io/corgis/csv/billionaires/)
+The original data was collected by the Forbes World’s Billionaires lists from 1996, 2001, and 2014.
+Scholars Caroline Freund and Sarah Oliver from t[he Peterson Institute for International Economics](https://www.piie.com/sites/default/files/documents/wp16-1.pdf) added a couple dozen more variables about each billionaire - including whether they were self-made or inherited their wealth.
+Each observation represents a billionaire and this dataset includes every billionaire in the world across all three years (1996, 2001, and 2014).
+Appendix A contains the description and type of our key variables.
+This dataset is open source, which eliminates many ethical concerns.
+Some ethical concerns about the data can be the privacy violations of the billionaires.
+Although the information is available to the public, the dataset could draw further attention to the billionaires which fuels negative sentiment towards them.
+Using this data, our research question was : across 1996, 2001, and 2014, how did the wealth origin, industry, gender, and region affect the net worth of billionaires?
+
+Our findings in response to our research question can help investigate dynamics surrounding economic inequality.
+By examining wealth origin, industry, gender, and region, light is shed on systemic barriers/advantages across different contexts.
+Understanding this data can help policymakers identify structural issues regarding economic disparities and create well informed economic strategies.
+Additionally, individuals aspiring to become billionaires and achieving a certain status within billionaire status may find our findings useful in providing a deeper understanding of the trends that shape that.
+By grouping similar sectors in broad_industry, binarizing inheritance/origin of wealth, and treating year as a categorical variable, we aimed to reduce noise and highlight meaningful trends over time.
+
+```{r}
+#| label: library-load
+#| message: false
+#| echo: false
+#| results: false
+
+library(tidyverse)
+library(tidymodels)
+library(openintro)
+
+### chat gpt used to group sectors together
+billionaires <- read.csv("data/billionaires.csv")
+
+billionaires <- billionaires |>
+  mutate(
+    company.sector = str_trim(tolower(
+      company.sector
+      )
+    )
+  ) |>  
+  # Normalize company.sector values
+  mutate(broad_industry = case_when(
+    wealth.how.industry %in% c(
+      "Technology-Computer", "Technology-Medical", "Software", 
+      "IT Services", "Hardware", "Semiconductors"
+      ) ~ "Technology",
+    wealth.how.industry %in% c(
+      "Banking", "Investment", "Private Equity", 
+      "Hedge Funds", "Money Management", "Diversified financial", 
+      "Private equity/leveraged buyout", "banking", "Venture Capital"
+      ) ~ "Finance",
+    wealth.how.industry %in% c(
+      "Automotive", "Aerospace", "Industrial", 
+      "Non-consumer industrial"
+      ) ~ "Manufacturing",
+    wealth.how.industry %in% c(
+      "E-commerce", "Retail", "Fashion", "Retail, Restaurant"
+      ) ~ "Retail",
+    wealth.how.industry %in% c(
+      "Pharmaceuticals", "Healthcare Services", "Biotech"
+      ) ~ "Healthcare",
+    wealth.how.industry %in% c(
+      "Real Estate", "Construction", "Constrution"
+      ) ~ "Real Estate",
+    wealth.how.industry %in% c(
+      "Media", "Entertainment"
+      ) ~ "Media & Entertainment",
+    wealth.how.industry %in% c(
+      "Food Processing", "Beverage"
+      ) ~ "Food & Beverage",
+    wealth.how.industry %in% c(
+      "Agriculture", "Energy", "Mining", "Mining and metals"
+      ) ~ "Natural Resources",
+    wealth.how.industry == "Logistics" ~ "Logistics",
+    # Temporary NA for ungrouped values
+    wealth.how.industry %in% c("Other", "0", "services") ~ NA_character_,  
+    TRUE ~ wealth.how.industry
+    )
+  ) |>
+  mutate(broad_industry = case_when(
+    (is.na(broad_industry) | broad_industry == "") & company.sector %in% c(
+      "technology", "it services", "software", "internet", "online gaming"
+      ) ~ "Technology",
+    is.na(broad_industry) & company.sector %in% c(
+      "finance", "banking", "investment", "hedge funds", "financial services"
+      ) ~ "Finance",
+    is.na(broad_industry) & company.sector %in% c(
+      "automotive", "manufacturing", "aerospace", "industrial"
+      ) ~ "Manufacturing",
+    is.na(broad_industry) & company.sector %in% c(
+      "e-commerce", "retail", "fashion", "luxury goods"
+      ) ~ "Retail",
+    is.na(broad_industry) & company.sector %in% c(
+      "pharmaceuticals", "healthcare", "biotech", "medical"
+      ) ~ "Healthcare",
+    is.na(broad_industry) & company.sector %in% c(
+      "real estate", "construction"
+      ) ~ "Real Estate",
+    is.na(broad_industry) & company.sector %in% c(
+      "media", "entertainment", "publishing"
+      ) ~ "Media & Entertainment",
+    is.na(broad_industry) & company.sector %in% c(
+      "food processing", "beverage", "groceries", "food"
+      ) ~ "Food & Beverage",
+    is.na(broad_industry) & company.sector %in% c(
+      "agriculture", "energy", "mining", "oil", "natural resources"
+      ) ~ "Natural Resources",
+    # Retain any pre-assigned broad_industry values
+    is.na(broad_industry) & company.sector == "logistics" ~ "Logistics",
+    TRUE ~ broad_industry
+    )
+  ) |>
+  mutate(
+    inherit = as.factor(if_else(
+      wealth.how.inherited == "not inherited", "Not Inherited", "Inherited"
+      )
+    ),
+    year = as.character(year)
+  ) |>
+  filter(broad_industry != "na") |>
+  filter(location.region != 0) |>
+  filter(demographics.gender == "male" |
+         demographics.gender == "female"
+          ) |>
+  filter(demographics.age > 0)
+  
+
+billionaires |>
+  count(wealth.how.industry)
+
+billionaires |>
+  count(broad_industry)
+```
+
+### Exploratory Data Analysis:
+
+We cleaned up/mutated the data by grouping the “wealth.how.industry” variable into relevant and organized categories to better identify trends.
+For example, we grouped variables like “ Software,” “IT Services,” and “Semiconductors” into a variable called “Technology” and “Banking,” “Hedge Funds,” and “Private Equity” were grouped under “Finance.” .
+
+@fig-proportion-of-billionaires-by-industry-over-time demonstrates that there were shifts in sources of wealth for billionaires.
+The Real Estate and Technology sectors shows a steady and slight increase in representation, which reflects its growing role in the global economy, particularly in the 21st century.
+Industries such as Finance, Natural Resources, and Retail remain consistently represented, but the Media/Entertainment and Consumer sectors see some decline over the represented years.
+
+```{r}
+#| label: fig-proportion-of-billionaires-by-industry-over-time
+#| fig.cap: "Industry Representation Over Time"
+#| echo: false
+#| fig-width: 8
+#| fig-asp: 0.4
+billionaires |>
+  filter(!is.na(broad_industry)) |>
+  count(year, broad_industry) |>
+  group_by(year) |>
+  mutate(proportion = n / sum(n)) |>
+  ggplot(aes(x = year, y = proportion, fill = broad_industry)) +
+  geom_bar(stat = "identity", position = "fill") +
+  labs(
+    title = "Industry Representation Over Time",
+    x = "Year",
+    y = "Proportion of Billionaires",
+    fill = "Broad Industry"
+  ) +
+  theme_minimal()
+```
+
+@fig-gender-distribution shows that males dominate the billionaires status group, nearing a total of nearly 2000, whereas women remain under the 250 mark.
+This exploratory graph aims to demonstrate the disparities within the billionaire status group.
+
+```{r}
+#| label: fig-gender-distribution
+#| fig.cap: "Gender Distribution of Billionaires"
+#| echo: false
+#| fig-width: 8
+#| fig-asp: 0.4
+billionaires |>
+  count(demographics.gender) |>
+  ggplot(aes(x = demographics.gender, y = n, fill = demographics.gender)) +
+  geom_col() +
+  labs(
+    title = "Gender Distribution of Billionaires",
+    x = "Gender",
+    y = "Count of Billionaires",
+    fill = "Gender"
+  ) +
+  theme_minimal()
+```
+
+@fig-count-year-and-region demonstrates that billionaires demographic is largely dominated by North America for all of the three years analyzed.
+Europe is the second largest-contributor.
+South Asia and the Middle East increase in every year measured, whereas East Asia and Latin America decrease and then increase.
+The graph demonstrates that North American and European billionaires dominate on the world scene, though, the recent findings from the last analyzed data in 2014 demonstrates that other regions are beginning to make their marks, though trailing significantly.
+
+```{r}
+#| label: fig-count-year-and-region
+#| fig.cap: "Billionaire Proportion Across Years and Regions"
+#| echo: false
+#| fig-width: 8
+#| fig-asp: 0.4
+billionaires |>
+  count(year, location.region) |>
+  group_by(year) |>
+  mutate(
+    proportion = n / sum(n),
+    location.region = fct_relevel(location.region, "Sub-Saharan Africa", "South Asia")
+  ) |>
+  ggplot(aes(x = year, y = proportion, fill = location.region)) +
+  geom_bar(stat = "identity", position = "fill") +
+  labs(
+    title = "Region Representation Over Time",
+    x = "Year",
+    y = "Proportion of Billionaires",
+    fill = "Region"
+  ) +
+  theme_minimal()
+```
+
+@fig-inherited-or-not demonstrates that the percentage of billionaires who inherited some amount of wealth has decreased over time.
+In 1996, the proportion of self-made billionaires was roughly equal to those who inherited their wealth.
+By 2014, however, self-made billionaires had become the majority.
+This finding can be beneficial to stakeholders who seek to become billionaires themselves but do not anticipate inheritance that could help them achieve this status.
+It provides a hopeful perspective.
+
+```{r}
+#| label: fig-inherited-or-not
+#| fig.cap: "Proportion of Billionaire Inheritance Across Years"
+#| echo: false
+#| fig-width: 8
+#| fig-asp: 0.4
+
+billionaires |>
+  filter(broad_industry != "na") |>
+  ggplot(aes(x = year, fill = inherit)) +
+  geom_bar(position = "fill") +
+  labs(
+    title = "Proportion of Self-Made Billionaires Over Time",
+    x = "Year",
+    y = "Proportion of Billionaires",
+    fill = "Inherited or Not"
+  )
+```
+
+## Methodology
+
+**Explanatory:**
+
+We chose to explore our research question through an initial explanatory analysis, but also through a exploratory visual analysis to view results.
+For example, when looking at gender and region and their effects on net worth, we created a scatterplot and facet_wrapped it by gender to demonstrate the differences amongst gender without overlap.
+Visualizing the data and utilizing exploratory analysis can help identify trends and provide context for the linear model as well.
+
+**Linear Model:**
+
+We fit a interactive linear regression model that predicts a billionaires net worth (wealth.worth.in.billions) based off year, wealth origin (inherit), industry (broad_industry), gender (demographics.gender), and region (location.region) in order to answer our research question.
+We opted for a interactive linear regression model because our outcome variable, net worth, is a continuous variable.
+A logistic regression model would not be helpful in answering our research question because our output is not a binary variable with predictions.
+We opted for for an interactive model over additive because it would take into account the relationships between different variables, which could exist in the context of the dataset.
+For example, it is possible for region to affect the role gender plays in predicting billionaire net worth.
+Opting for a linear additive model allows us to predict numerical outcomes and evaluate which predictors are more signficant, whereas opting for a logistic model would have made more sense if our outcome was binary.
+
+**Boot Strapping:**
+
+To calculate confidence intervals for the regression coefficients, we used bootstrapping, a method that doesn’t rely on strict assumptions about the data’s distribution.
+This was particularly important for our dataset, where billionaire net worths show high variability and skewness.
+Bootstrapping works by resampling the data with replacement and repeatedly estimating the regression coefficients.
+By capturing this variability across multiple iterations, it provides a more robust way of estimating confidence intervals compared to traditional methods.
+
+The confidence intervals we derived reflect how precise our estimates are for each predictor’s effect.
+Narrow intervals mean the effect is consistent and reliable across the samples, while wider intervals suggest more uncertainty, likely due to variability in the data or limited representation of certain groups.
+This method was especially useful for our study because billionaire wealth is influenced by unique and often extreme factors, and bootstrapping allowed us to account for that variability more effectively.
+
+## Results
+
+**Net Worth Distribution by Industry**
+
+The median net worth of billionaires varies slightly across industries as seen in @fig-industry-net-worth.
+Healthcare has the lowest median net worth, approximately \$1.2 billion, potentially reflecting lower scalability or profitability compared to other sectors.
+Retail, media and entertainment, and consumer industries are slightly higher at around \$2.5 billion, with medians marginally exceeding the rest.
+The remaining industries show consistent median net worth values, suggesting similar wealth accumulation levels among billionaires in most fields.
+
+```{r}
+#| label: fig-industry-net-worth
+#| fig.cap: "Net Worth Distribution by Industry"
+#| echo: false
+#| warning: false
+#| fig-width: 8
+#| fig-asp: 0.4
+billionaires |>
+  group_by(broad_industry) |>
+  summarize(median_networth = median(wealth.worth.in.billions, na.rm = TRUE)) |>
+  ggplot(aes(x = broad_industry, y = median_networth, fill = broad_industry)) +
+  geom_col() +
+  labs(
+    title = "Industry vs Median net worth",
+    x = "Industry",
+    y = "net worth (Billions USD)"
+  ) +
+  theme_minimal() +
+  theme(
+    axis.text.x = element_text(angle = 45, hjust = 1),
+    legend.position = "none"
+  )
+```
+
+**Median Net Worth by Gender Over Years**
+
+As seen in @fig-net-worth-vs-gender, from 1996 to 2001, male billionaires experienced a steady increase in median net worth, continuing into 2014 with a gradual upward slope.
+Female billionaires showed a more dynamic pattern, with a slight decline in median net worth from 1996 to 2001, followed by a substantial increase from 2001 to 2014.
+By 2014, female billionaires surpassed their male counterparts, achieving a median net worth of \$2.4 billion compared to \$2.1 billion for males.
+This result highlights an increasing median wealth level among female billionaires, especially after 2001.
+
+```{r}
+#| label: fig-net-worth-vs-gender
+#| echo: false
+#| warning: false
+#| fig.cap: "Net Worth Distribution by Gender Over Years"
+#| fig-width: 8
+#| fig-asp: 0.4
+billionaires |>
+  group_by(year, demographics.gender) |>
+  summarize(median_networth = median(wealth.worth.in.billions, na.rm = TRUE)) |>
+  ungroup() |>
+  mutate(year = as.numeric(year)) |>
+  ggplot(aes(x = year, y = median_networth, color = demographics.gender, group = demographics.gender)) +
+  geom_line(size = 1) +
+  geom_point(size = 2) +
+  labs(
+    title = "Median net worth by Gender Over Years",
+    x = "Year",
+    y = "Median net worth (Billions USD)",
+    color = "Gender"
+  ) +
+  theme_minimal() 
+```
+
+**Median Net Worth by Inheritance Over Years**
+
+In @fig-net-worth-vs-inherit, the median net worth of billionaires without inherited wealth decreased slightly between 1996 and 2001, possibly due to external economic factors, but recovered by 2014, stabilizing at \$2 billion.
+In contrast, the median net worth of billionaires with inherited wealth grew consistently over the three years, reaching \$2.6 billion in 2014.
+This consistent upward trend in inherited wealth demonstrates its growth advantage over time, with no observed decreases.
+
+```{r}
+#| label: fig-net-worth-vs-inherit
+#| echo: false
+#| warning: false
+#| fig.cap: "Net Worth Distribution by Inheritance Over Years"
+#| fig-width: 8
+#| fig-asp: 0.4
+billionaires |>
+  group_by(year, inherit) |>
+  summarize(median_networth = median(wealth.worth.in.billions, na.rm = TRUE)) |>
+  ungroup() |>
+  mutate(year = as.numeric(year)) |>
+  ggplot(aes(x = year, y = median_networth, color = inherit, group = inherit)) +
+  geom_line(size = 1) +
+  geom_point(size = 2) +
+  labs(
+    title = "Median net worth by Inehrit Over Years",
+    x = "Year",
+    y = "Median net worth (Billions USD)",
+    color = "Inherited"
+  ) +
+  theme_minimal() 
+```
+
+**Region vs Median Net Worth**
+
+Regions with the highest median net worth shown in @fig-region-net-worth-year are Sub-Saharan Africa, Europe, and North America, each slightly above \$2 billion.
+Among these, Sub-Saharan Africa and Europe show a marginal lead.
+Other regions cluster closely together, with median net worth values slightly below \$2 billion.
+This result suggests a concentration of higher wealth levels in specific regions while maintaining relative parity across the rest.
+
+```{r}
+#| label: fig-region-net-worth-year
+#| echo: false
+#| warning: false
+#| fig.cap: "Net Worth Distribution Across Regions"
+#| fig-width: 8
+#| fig-asp: 0.4
+billionaires |>
+  group_by(location.region) |>
+  summarize(median_networth = median(wealth.worth.in.billions, na.rm = TRUE)) |>
+  ggplot(aes(x = location.region, y = median_networth, fill = location.region)) +
+  geom_col() +
+  labs(
+    title = "Region vs Median net worth",
+    x = "Region",
+    y = "net worth (Billions USD)"
+  ) +
+  theme_minimal() +
+  theme(
+    axis.text.x = element_text(angle = 45, hjust = 1),
+    legend.position = "none"
+  )
+```
+
+**Net Worth based on Gender and Region**
+
+@fig-region-net-worth-gender reveals significant disparities in net worth distribution across gender and region, with male billionaires dominating in both number and range of wealth.
+Male billionaires exhibit a broad range of net worth, with notable outliers reaching \$70–80 billion, particularly in North America and Europe.
+East Asia shows a similar trend with slightly fewer outliers, while Latin America and Sub-Saharan Africa feature fewer billionaires overall, though Latin America includes a single high-value outlier at \$70 billion.
+In contrast, female billionaires are sparsely represented, concentrated primarily in North America and Europe, with net worth values largely below \$5 billion and very few exceeding this threshold.
+The density of male billionaires is heavily clustered in the \$1–10 billion range across all regions, indicating a relatively common mid-tier wealth level.
+Female billionaires, however, exhibit a narrower and less evenly distributed wealth range, reflecting both a smaller population and lower maximum wealth values compared to their male counterparts.
+This analysis underscores the significant gender imbalance in billionaire representation and wealth accumulation, with regional disparities further emphasizing these trends.
+
+```{r}
+#| label: fig-region-net-worth-gender
+#| echo: false
+#| warning: false
+#| fig.cap: "net worth based on Gender and Region"
+#| fig-width: 8
+#| fig-asp: 0.4
+
+billionaires$location.region <- str_wrap(billionaires$location.region, width = 10)
+
+ggplot(billionaires, aes(x = wealth.worth.in.billions, 
+                         y = location.region, 
+                         color = demographics.gender)) + 
+  geom_jitter(alpha = .4)+
+  theme(axis.text.y = element_text(size = 4))+
+  facet_wrap(~demographics.gender)+
+
+labs(x = "Net Worth (in billions)", 
+     y = "Region", 
+     color = "Gender",
+     title = "Net Worth vs Gender + Region")
+```
+
+```{r}
+#| label: additive-model
+#| echo: false
+#| results: false
+billionaires_fit <- linear_reg() |>
+  fit(wealth.worth.in.billions ~ year + inherit + broad_industry + demographics.gender + location.region, data = billionaires)
+tidy(billionaires_fit)
+```
+
+**Equation 1: Linear Model (Appendix B)**
+
+@eq-model estimates the net worth of a billionaire based off data such as industry, gender, inheritance, region, and year in which data was taken.
+Here, the intercept of 2.257 billion estimates the wealth of a female billionaire from East Asia in 1996, who profited from the consumer industry and inherited wealth on average.
+The slopes model the deviation from this baseline intercept, each slope modeling a characteristic of a variable that tends to either have an on average a higher or lower net worth.
+Compared to the baseline intercept, later years, being male, working in media/entertainment, technology, retail, and being from a more Western country tend to have a higher net worth on average.
+
+```{r}
+#| label: bootstrapping
+#| echo: false
+#| results: false
+set.seed(1234)
+
+boot_dist <- billionaires |>
+  specify(wealth.worth.in.billions ~ year + inherit + broad_industry + demographics.gender + location.region) |>
+  generate(reps = 10, type = "bootstrap") |> #CHANGE REPS TO 1000
+  fit()
+
+obs_fit <- billionaires |>
+  specify(wealth.worth.in.billions ~ year + inherit + broad_industry + demographics.gender + location.region) |>
+  fit()
+
+conf_ints <- get_confidence_interval(
+  boot_dist,
+  level = 0.95,
+  point_estimate = obs_fit
+)
+
+conf_ints
+```
+
+**Bootstrap Confidence Intervals (Appendix C)**
+
+Coefficient Categorization (Appendix D) categorizes variable coefficients into whether they are stronger or weaker and positive or negative with respect to the intercept baseline.
+A stronger average correlation is one that's confidence interval doesn't include zero while a weaker average correlation is one that's confidence interval does include zero.
+
+```{r}
+#| label: model-r-squared
+#| echo: false
+#| results: false
+glance(billionaires_fit)$r.squared
+```
+
+#### **R squared value of our model:** 0.02403523
+
+## Discussion
+
+The analysis of billionaire wealth trends highlights important patterns in industry representation, gender distribution, inheritance, and regional disparities, as well as shifts in net worth over time.
+Gender disparities are starkly evident in @fig-gender-distribution, where male billionaires dominate, while female representation remains minimal, likely due to structural barriers and industry dynamics favoring male participation.
+This gender imbalance is further explored in @fig-net-worth-vs-gender, which shows that male billionaires have consistently higher median net worths from 1996 to 2001, but a few years before 2014, female billionaires surpassed males, reaching \$2.4 billion compared to \$2.1 billion for males.
+This upward trajectory for women signals a shift toward higher wealth levels among female billionaires, often overshadowed by the large population and distant outliers among male billionaires.
+
+Inheritance patterns, as illustrated in @fig-net-worth-vs-inherit, reveal that self-made billionaires experienced a dip in median net worth from 1996 to 2001 before stabilizing at \$2 billion in 2014, while those with inherited wealth saw steady growth, reaching \$2.6 billion.
+This highlights the enduring advantage of inherited wealth despite growing opportunities for entrepreneurship seen in @fig-inherited-or-not with an higher proportion of billionaires with non-inherited wealth.
+
+Regional disparities in wealth are evident in @fig-region-net-worth-year, which shows that Sub-Saharan Africa, Europe, and North America have the highest median net worths, exceeding \$2 billion, while other regions cluster slightly below this threshold, reflecting persistent global economic inequalities.
+Sub-Saharan Africa might seem to have a high median billionaire net worth but in @fig-region-net-worth-gender there are certain a very limited number of data points suggesting few but moderately higher than average billionaires.
+@fig-region-net-worth-gender examines net worth distribution by gender and region, revealing that male billionaires dominate in both number and wealth range, with outliers reaching \$70–80 billion in North America and Europe.
+Female billionaires, by contrast, are concentrated primarily in North America and Europe, with net worths below \$5 billion.
+The male wealth density is clustered between \$1–10 billion across regions, while female billionaires exhibit a narrower, less evenly distributed range.
+This underscores the combined impact of gender and regional disparities on wealth accumulation.
+
+Together, these findings paint a comprehensive picture of global wealth dynamics, showing a shift toward innovation-driven industries like Technology and a emerging global economy, there lingers persistent gender and regional disparities, and the enduring influence of inheritance in wealth accumulation.
+
+### **Findings**
+
+The regression model highlights the role of industry, region, year, and wealth origin in explaining billionaire net worth variations.
+Retail and Technology are moderately linked to higher net worth, while Healthcare, Natural Resources, and Real Estate show lower associations, reflecting the rise of transformative industries like Technology.
+Regional disparities persist, with North America and Europe showing higher net worths, while regions like the Middle East/North Africa and South Asia had little to no positive effect.
+
+Net worth increased over time, particularly in 2001 and 2014, aligning with broader economic growth.
+Inherited wealth showed slightly higher net worths than self-made wealth, though this difference was not consistently significant.
+However, the model’s low R-squared value (0.024) indicates most variability remains unexplained, suggesting that factors such as business practices, macroeconomic policies, or individual traits may influence wealth.
+Unique events like major IPOs or investments likely also play a role.
+Despite its limitations, the model underscores the impact of inheritance, industries, regions, and time while paving the way for future research to include more nuanced variables and modeling techniques.
+
+### **Limitations**
+
+This study provides valuable insights but is limited by its dataset, which spans only three years (1996, 2001, and 2014), restricting analysis of longer-term trends or events like the 2008 financial crisis.
+Additionally, billionaires who dropped below the threshold in other years are excluded, potentially omitting relevant data.
+The dataset may not fully capture true net worth due to privacy concerns and undisclosed assets, and its male-dominated representation highlights societal barriers that limit gender-specific analyses.
+
+The regression model’s low R-squared value indicates most variability remains unexplained, suggesting factors like business practices or economic policies influence wealth.
+Confidence intervals from the analysis, informed by bootstrapping, provide insights into predictor reliability.
+For instance, the interval for year2014 (1.091, 2.117) excludes zero, confirming a significant net worth increase compared to 1996, while Finance (-1.027, 0.417) includes zero, indicating no meaningful effect.
+These intervals clarify which variables are impactful and highlight areas for further research.
+
+### **Potential Issues**
+
+A potential issue lies in the nicheness of the results.
+Since the dataset focuses solely on billionaires, it doesn't capture trends among high-net-worth individuals who fall below this threshold or broader economic populations, making the findings only applicable to those at the tip of the wealth hierarchy.
+We also identify associations between predictors and net worth but does not establish causal relationships.
+For example, while North American billionaires tend to have higher net work, this may reflect broader economic conditions rather than direct advantages tide to geography.
+Additionally, the study doesn't fully address macroeconomic factors like globalization which likely plays significant roles in shaping billionaire wealth over time.The linear regression model assumes straightforward, linear relationships between variables which may oversimplify the reality of how wealth is accumulated.
+Nonlinear interactions or other complex dynamics could have been missed in this analysis.
+
+### **Future Work**
+
+Future research should aim to address the limitations of this study while expanding on its findings.
+Including additional years of data would provide a more comprehensive view of long-term trends and allow for the analysis of major economic events, such as financial crises or times of global instability (such as the pandemic), or the effects of technological innovation.
+Expanding the data set to include multimillionaires could also shed light on the transition to billionaire status, offering insights into wealth mobility and economic opportunity
+
+Further, incorporating additional predictors such as education level, how much they pay their employees, political affiliations, or philanthropic activities could provide a more nuanced understanding of what drives billionaire net worth.
+Another interesting form of data that could be contributed is the billionaire's self perception of the primary factors that drove their net worth; this could be collected through interviewing billionaires.
+Evaluating a billionaires perception of the factors driving success while utilizing quantitative data from our methodology and results could provide a more well-rounded answer to those who hope to achieve such status themselves.
+In addition, conducting more detailed, region-specific analyses could uncover localized factors affecting wealth, such as regulatory environments or cultural attitudes toward entrepreneurship.
+A gender-specific analysis could also help, because it could shed light on the different factors affecting women to better tailor solutions and increase access to high-wealth opportunities.
+Additionally, hypothesis testing could be utilized to answer more specific questions and better recognize relationships between different variables.
+
+Finally, future work could focus on the societal impacts of billionaire wealth, such as job creation, innovation, and philanthropy.
+By examining these broader contributions, researchers can provide a more balanced perspective on the role of billionaires in the global economy.
+Analysis techniques would also help isolate the effects of specific factors, such as wealth origin or industry, providing deeper insights into the pathways to extreme wealth.
+
+## References
+
+```{r}
+#| label: references
+#| echo: false
+
+ref <- bibentry(
+bibtype = "Manual",
+title = "Billionaires CSV File",
+author = person("Ryan Whitcomb"),
+organization = "CORGIS Dataset Project",
+year = 2016,
+url = "https://corgis-edu.github.io/corgis/csv/billionaires/ ",
+key = "R")
+
+ref
+
+ref1 <- bibentry(
+bibtype = "Manual",
+title = "The Origins of the Superrich: The Billionaire
+Characteristics Database ",
+
+author = person("Caroline Freund and Sarah Oliver"),
+organization = "Working Paper Series",
+year = 2016,
+url = "https://www.piie.com/sites/default/files/documents/wp16-1.pdf ",
+key = "R")
+
+ref1
+```
+
+{{< pagebreak >}}
+
+## Appendix
+
+Appendix A:
+
++----------------------------+----------------------------------------------------------------------------------------------------------------------------------------------+---------------+
+| | **Key Variable Name**    | | **Description**                                                                                                                            | | **Type**    |
++============================+==============================================================================================================================================+===============+
+| | demographics.gender      | | Whether they are male or female and married (in the occasion that the billionaire status was achieved through marriage).                   | | Categorical |
++----------------------------+----------------------------------------------------------------------------------------------------------------------------------------------+---------------+
+| | location.region          | | Where the billionaire lives (North America, Europe, East Asia, etc.)                                                                       | | Categorical |
++----------------------------+----------------------------------------------------------------------------------------------------------------------------------------------+---------------+
+| | inherit                  | | Whether or not the billionaire was self-made or inherited their wealth                                                                     | | Categorical |
++----------------------------+----------------------------------------------------------------------------------------------------------------------------------------------+---------------+
+| | year                     | | The year in which the individual was a billionaire (1996, 2001, or 2014)                                                                   | | Categorical |
++----------------------------+----------------------------------------------------------------------------------------------------------------------------------------------+---------------+
+| | broad_industry           | | Variable created by us based off wealth.how.industry and company.sector which encompasses the industry type the billionaire is involved in | | Categorical |
++----------------------------+----------------------------------------------------------------------------------------------------------------------------------------------+---------------+
+| | wealth.worth.in.billions | | Billionaires net worth in billions                                                                                                         | | Numerical   |
++----------------------------+----------------------------------------------------------------------------------------------------------------------------------------------+---------------+
+
+Appendix B:
+
+$$
+\begin{aligned} \widehat{net~worth~in~billions} &= 2.257
+\\ &+ 0.7744 * Year~2001
+\\ &+ 1.5977 * Year~2014
+\\ &- 0.5227 * Not~Inherited
+\\ &- 0.2932 * Industry~Finance
+\\ &- 2.180 * Industry~Healthcare
+\\ &- 0.6792 * Industry~Hedge~Fund
+\\ &- 0.5390 * Industry~Manufacturing
+\\ &+ 0.3687 * Industry~Media~\&~Entertainment
+\\ &- 0.6457 * Industry~Natural~Resources
+\\ &- 0.9609 * Industry~Real~Estate
+\\ &+ 0.4642 * Industry~Retail
+\\ &+ 0.4898 * Industry~Technology
+\\ &+ 0.07849 * Gender~Male
+\\ &+ 0.7298 * Region~Europe
+\\ &+ 0.4167 * Region~Latin~America
+\\ &- 0.2838 * Region~Middle~East/North~Africa
+\\ &+ 1.086 * Region~North~America
+\\ &- 0.03024 * Region~South~Asia
+\\ &+ 0.9804 * Region~Sub-Saharan~Africa
+\end{aligned}
+$$ {#eq-model}
+
+Appendix C:
+
+**Bootstrap Confidence Intervals (Appendix C)**
+
++---------------------------------+--------------+--------------+--------------+
+| **Term**                        | **Estimate** | **Lower CI** | **Upper CI** |
++:================================+:============:+:============:+:============:+
+| Intercept                       | 2.256590     | 1.177848     | 3.302647     |
++---------------------------------+--------------+--------------+--------------+
+| Year 2001                       | 0.774432     | 0.233369     | 1.359624     |
++---------------------------------+--------------+--------------+--------------+
+| Year 2014                       | 1.597731     | 1.091089     | 2.116682     |
++---------------------------------+--------------+--------------+--------------+
+| Inherit Not Inherited           | -0.522662    | -0.999695    | -0.035091    |
++---------------------------------+--------------+--------------+--------------+
+| Industry Finance                | -0.293198    | -1.026840    | 0.416828     |
++---------------------------------+--------------+--------------+--------------+
+| Industry Healthcare             | -2.179914    | -3.220494    | -1.207436    |
++---------------------------------+--------------+--------------+--------------+
+| Industry Hedge funds            | -0.679160    | -1.733979    | 0.532830     |
++---------------------------------+--------------+--------------+--------------+
+| Industry Manufacturing          | -0.538971    | -1.492749    | 0.503136     |
++---------------------------------+--------------+--------------+--------------+
+| Industry Media & Entertainment  | 0.368714     | -0.611234    | 1.511191     |
++---------------------------------+--------------+--------------+--------------+
+| Industry Natural Resources      | -0.645716    | -1.421874    | 0.082491     |
++---------------------------------+--------------+--------------+--------------+
+| Industry Real Estate            | -0.960857    | -1.615266    | -0.314428    |
++---------------------------------+--------------+--------------+--------------+
+| Industry Retail                 | 0.464211     | -0.542816    | 1.604520     |
++---------------------------------+--------------+--------------+--------------+
+| Industry Technology             | 0.489827     | -0.503268    | 1.539953     |
++---------------------------------+--------------+--------------+--------------+
+| Gender Male                     | 0.078491     | -0.696012    | 0.857048     |
++---------------------------------+--------------+--------------+--------------+
+| Region Europe                   | 0.729752     | 0.204732     | 1.297876     |
++---------------------------------+--------------+--------------+--------------+
+| Region Latin America            | 0.416726     | -0.553584    | 1.675010     |
++---------------------------------+--------------+--------------+--------------+
+| Region Middle East/North Africa | -0.283756    | -1.004995    | 0.614462     |
++---------------------------------+--------------+--------------+--------------+
+| Region North America            | 1.085842     | 0.530242     | 1.687154     |
++---------------------------------+--------------+--------------+--------------+
+| Region South Asia               | -0.030236    | -0.946959    | 0.999619     |
++---------------------------------+--------------+--------------+--------------+
+| Region Sub-Saharan Africa       | 0.980414     | -1.130570    | 4.191880     |
++---------------------------------+--------------+--------------+--------------+
+
+: Appendix D
+
++------------------------------------------+--------------------------------------------------------------------------------------+------------------------------------------------------------------------------------------------------------------------------------+
+| Col1                                     | Stronger Average Correlation                                                         | Weaker Average Correlation                                                                                                         |
++==========================================+======================================================================================+====================================================================================================================================+
+| **Positive Average Impact on Net Worth** | Year 2001, Year 2014, Region Europe, Region North America                            | Industry Media & Entertainment, Industry retail, Industry Technology, Gender Male, Region Latin America, Region Sub-Saharan Africa |
++------------------------------------------+--------------------------------------------------------------------------------------+------------------------------------------------------------------------------------------------------------------------------------+
+| **Negative Average Impact on Net Worth** | Not Inherited, Industry Healthcare, Industry Natural Resources, Industry Real Estate | Industry Finance, Industry Hedge Fund, Industry Manufacturing, Region Middle East/North Africa, Region South Asia                  |
++------------------------------------------+--------------------------------------------------------------------------------------+------------------------------------------------------------------------------------------------------------------------------------+
